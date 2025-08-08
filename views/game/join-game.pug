@@ -1,0 +1,136 @@
+//- views/game/join-game.pug - Join Existing Game
+extends ../layout
+
+block content
+  .card.form-container
+    h2 Join Quest
+    p Enter a game code to join an existing adventure!
+    
+    form#joinGameForm
+      .form-group
+        label(for='gameCode') Game Code
+        input.form-control(type='text', id='gameCode', name='gameCode', placeholder='Enter 6-digit game code', required, maxlength='6', pattern='[A-Za-z0-9]{6}')
+        small.form-text Get the game code from the quest creator
+        
+      button.btn.btn-primary(type='submit') Join Quest
+      a.btn.btn-secondary(href='/dashboard') Cancel
+      
+    .alert#alert(style='display: none;')
+    
+  section.available-games
+    .card
+      h3 Available Public Games
+      .games-list#availableGamesList
+        p Loading available games...
+
+block scripts
+  script.
+    document.addEventListener('DOMContentLoaded', async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
+      
+      // Load available public games
+      await loadAvailableGames();
+    });
+
+    async function loadAvailableGames() {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch('/api/games/available', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (response.ok) {
+          const games = await response.json();
+          const gamesList = document.getElementById('availableGamesList');
+          
+          if (games.length === 0) {
+            gamesList.innerHTML = '<p>No public games available. Create your own quest!</p>';
+          } else {
+            gamesList.innerHTML = games.map(game => `
+              <div class="game-item">
+                <div class="game-info">
+                  <h4>${game.game_name}</h4>
+                  <p>Code: <strong>${game.game_code}</strong></p>
+                  <p>Players: ${game.current_players}/${game.max_players}</p>
+                  <p>Difficulty: <span class="difficulty-${game.difficulty}">${game.difficulty}</span></p>
+                  <p>Created by: ${game.creator_username}</p>
+                </div>
+                <div class="game-actions">
+                  <button class="btn btn-primary" onclick="joinGameByCode('${game.game_code}')">
+                    Quick Join
+                  </button>
+                </div>
+              </div>
+            `).join('');
+          }
+        }
+      } catch (error) {
+        console.error('Error loading available games:', error);
+        document.getElementById('availableGamesList').innerHTML = 
+          '<p>Error loading available games</p>';
+      }
+    }
+
+    async function joinGameByCode(gameCode) {
+      document.getElementById('gameCode').value = gameCode;
+      document.getElementById('joinGameForm').dispatchEvent(new Event('submit'));
+    }
+
+    document.getElementById('joinGameForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const gameCode = document.getElementById('gameCode').value.toUpperCase();
+      const alertDiv = document.getElementById('alert');
+      const token = localStorage.getItem('token');
+      
+      if (gameCode.length !== 6) {
+        alertDiv.className = 'alert alert-error';
+        alertDiv.textContent = 'Game code must be exactly 6 characters';
+        alertDiv.style.display = 'block';
+        return;
+      }
+      
+      try {
+        const response = await fetch('/api/games/join', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ game_code: gameCode })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          alertDiv.className = 'alert alert-success';
+          alertDiv.textContent = 'Successfully joined the quest!';
+          alertDiv.style.display = 'block';
+          
+          // Redirect to waiting room
+          setTimeout(() => {
+            window.location.href = `/waiting-room/${data.game.game_id}`;
+          }, 1500);
+        } else {
+          alertDiv.className = 'alert alert-error';
+          alertDiv.textContent = data.message || 'Failed to join quest';
+          alertDiv.style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Join game error:', error);
+        alertDiv.className = 'alert alert-error';
+        alertDiv.textContent = 'Network error. Please try again.';
+        alertDiv.style.display = 'block';
+      }
+    });
+    
+    // Auto-format game code input
+    document.getElementById('gameCode').addEventListener('input', (e) => {
+      e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    });

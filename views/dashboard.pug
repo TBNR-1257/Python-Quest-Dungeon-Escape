@@ -1,0 +1,164 @@
+//- views/dashboard.pug - Main Dashboard
+extends layout
+
+block content
+  .hero
+    h1 Welcome to Your Quest Dashboard
+    p#welcomeMessage Ready for your next Python adventure?
+    .user-actions
+      button.btn.btn-danger#logout-btn Logout
+
+  .card-grid
+    .card
+      h3 🎮 Create New Game
+      p Start a new dungeon quest and invite friends to join your adventure.
+      a.btn.btn-primary(href='/create-game') Create Game
+      
+    .card
+      h3 🚪 Join Existing Game  
+      p Enter a game code to join an ongoing quest with other players.
+      a.btn.btn-secondary(href='/join-game') Join Game
+      
+    .card
+      h3 📊 Your Stats
+      p#playerStats Loading your quest statistics...
+      .stats-grid
+        .stat-item
+          .stat-value#gamesPlayed -
+          .stat-label Games Played
+        .stat-item  
+          .stat-value#gamesWon -
+          .stat-label Victories
+        .stat-item
+          .stat-value#questionsAnswered -
+          .stat-label Questions Solved
+
+  section.recent-games
+    h2 Recent Games
+    .card
+      .games-list#recentGamesList
+        p Loading recent games...
+
+block scripts
+  script.
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Get token from both localStorage and cookies to handle any inconsistency
+      let token = localStorage.getItem('token') || localStorage.getItem('authToken');
+      let user = localStorage.getItem('user');
+      
+      // If no token, redirect to login
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
+      
+      // Parse user data
+      try {
+        user = JSON.parse(user || '{}');
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+        // Clear invalid data and redirect
+        localStorage.clear();
+        window.location.href = '/login';
+        return;
+      }
+      
+      // Update welcome message
+      if (user.username) {
+        document.getElementById('welcomeMessage').textContent = 
+          `Welcome back, ${user.username}! Ready for your next Python adventure?`;
+      }
+      
+      // Setup logout button
+      const logoutBtn = document.getElementById('logout-btn');
+      if (logoutBtn) {
+        logoutBtn.addEventListener('click', function() {
+          // Clear all possible token storage locations
+          localStorage.removeItem('token');
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('user');
+          
+          // Clear cookies by calling logout endpoint
+          fetch('/api/auth/logout', {
+            method: 'POST',
+            credentials: 'include' // Include cookies in request
+          }).then(() => {
+            window.location.href = '/login';
+          }).catch(() => {
+            // Even if logout endpoint fails, redirect anyway
+            window.location.href = '/login';
+          });
+        });
+      }
+      
+      // Update navigation to show logout
+      updateNavigation();
+      
+      // Load user statistics
+      try {
+        const statsResponse = await fetch('/api/users/stats', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'x-auth-token': token // Include both header formats
+          }
+        });
+        if (statsResponse.ok) {
+          const stats = await statsResponse.json();
+          document.getElementById('gamesPlayed').textContent = stats.gamesPlayed || 0;
+          document.getElementById('gamesWon').textContent = stats.gamesWon || 0; 
+          document.getElementById('questionsAnswered').textContent = stats.questionsAnswered || 0;
+        } else if (statsResponse.status === 401) {
+          // Token expired, clear and redirect
+          localStorage.clear();
+          window.location.href = '/login';
+          return;
+        }
+      } catch (error) {
+        console.error('Error loading stats:', error);
+        document.getElementById('playerStats').textContent = 'Error loading statistics';
+      }
+      
+      // Load recent games
+      try {
+        const gamesResponse = await fetch('/api/users/recent-games', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'x-auth-token': token // Include both header formats
+          }
+        });
+        if (gamesResponse.ok) {
+          const games = await gamesResponse.json();
+          const gamesList = document.getElementById('recentGamesList');
+          
+          if (games.length === 0) {
+            gamesList.innerHTML = '<p>No recent games found. Start your first quest!</p>';
+          } else {
+            gamesList.innerHTML = games.map(game => `
+              <div class="game-item">
+                <div class="game-info">
+                  <h4>Game #${game.game_id}</h4>
+                  <p>Status: ${game.status}</p>
+                  <p>Players: ${game.player_count}</p>
+                  <p>Created: ${new Date(game.created_at).toLocaleDateString()}</p>
+                </div>
+                <div class="game-actions">
+                  ${game.status === 'active' ? 
+                    `<a href="/game/${game.game_id}" class="btn btn-primary">Continue</a>` :
+                    `<span class="game-status ${game.status}">${game.status}</span>`
+                  }
+                </div>
+              </div>
+            `).join('');
+          }
+        } else if (gamesResponse.status === 401) {
+          // Token expired, clear and redirect
+          localStorage.clear();
+          window.location.href = '/login';
+          return;
+        }
+      } catch (error) {
+        console.error('Error loading recent games:', error);
+        document.getElementById('recentGamesList').innerHTML = 
+          '<p>Error loading recent games</p>';
+      }
+    });

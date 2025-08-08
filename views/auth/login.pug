@@ -1,0 +1,76 @@
+//- views/auth/login.pug - Login Page
+extends ../layout
+
+block content
+  .card.form-container
+    h2 Login to Python Quest
+    form#loginForm
+      .form-group
+        label(for='username') Username or Email
+        input.form-control(type='text', id='username', name='username', placeholder='Enter your username or email', required)
+        
+      .form-group
+        label(for='password') Password  
+        input.form-control(type='password', id='password', name='password', placeholder='Enter your password', required)
+        
+      button.btn.btn-primary(type='submit') Login
+      
+    .alert#alert(style='display: none;')
+    
+    p.
+      Don't have an account? 
+      a(href='/register', style='color: #ffd700;') Register here
+
+block scripts
+  script.
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const alertDiv = document.getElementById('alert');
+      
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          // Store token and user data
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('user', JSON.stringify(data.user));
+          
+          // Show success message
+          alertDiv.className = 'alert alert-success';
+          alertDiv.textContent = data.message;
+          alertDiv.style.display = 'block';
+          
+          // Redirect to dashboard
+          setTimeout(() => {
+            window.location.href = '/dashboard';
+          }, 1000);
+        } else {
+          // Show error message
+          alertDiv.className = 'alert alert-error';
+          alertDiv.textContent = data.message || 'Login failed';
+          alertDiv.style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Login error:', error);
+        alertDiv.className = 'alert alert-error';
+        alertDiv.textContent = 'Network error. Please try again.';
+        alertDiv.style.display = 'block';
+      }
+    });
+    
+    // Check if already logged in - use different variable name to avoid conflict
+    const userToken = localStorage.getItem('token');
+    if (userToken) {
+      window.location.href = '/dashboard';
+    }

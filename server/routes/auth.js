@@ -4,6 +4,7 @@ const {
   register,
   login,
   getCurrentUser,
+  logout,
 } = require("../controllers/authController");
 const auth = require("../middleware/auth");
 
@@ -37,6 +38,9 @@ router.post(
   ],
   login
 );
+
+// Logout Route
+router.post("/logout", logout);
 
 // Get Current User Route
 router.get("/user", auth, getCurrentUser);

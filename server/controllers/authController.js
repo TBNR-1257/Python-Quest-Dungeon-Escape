@@ -52,14 +52,24 @@ const register = async (req, res) => {
     // Generate token
     const token = generateToken(newUser[0]);
 
+    // Set token as HTTP-only cookie for web requests
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // HTTPS in production
+      sameSite: "strict",
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    });
+
+    const userResponse = {
+      id: newUser[0].user_id,
+      username: newUser[0].username,
+      email: newUser[0].email,
+    };
+
     res.status(201).json({
       message: "User registered successfully",
-      token,
-      user: {
-        id: newUser[0].user_id,
-        username: newUser[0].username,
-        email: newUser[0].email,
-      },
+      token, // Still send token in response for API compatibility
+      user: userResponse,
     });
   } catch (error) {
     console.error("Registration error:", error);
@@ -105,14 +115,24 @@ const login = async (req, res) => {
     // Generate token
     const token = generateToken(user);
 
+    // Set token as HTTP-only cookie for web requests
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // HTTPS in production
+      sameSite: "strict",
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    });
+
+    const userResponse = {
+      id: user.user_id,
+      username: user.username,
+      email: user.email,
+    };
+
     res.json({
       message: "Login successful",
-      token,
-      user: {
-        id: user.user_id,
-        username: user.username,
-        email: user.email,
-      },
+      token, // Still send token in response for API compatibility
+      user: userResponse,
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -136,4 +156,18 @@ const getCurrentUser = async (req, res) => {
   }
 };
 
-module.exports = { register, login, getCurrentUser };
+// Logout User
+const logout = async (req, res) => {
+  try {
+    // Clear the token cookie
+    res.clearCookie("token");
+    res.clearCookie("authToken"); // Clear any alternative cookie names
+
+    res.json({ message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Logout error:", error);
+    res.status(500).json({ message: "Error during logout" });
+  }
+};
+
+module.exports = { register, login, getCurrentUser, logout };

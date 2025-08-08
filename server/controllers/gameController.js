@@ -12,6 +12,11 @@ const createGame = async (req, res) => {
     const { game_name, max_players = 4 } = req.body;
     const created_by = req.user.user_id;
 
+    // Validate required fields
+    if (!game_name) {
+      return res.status(400).json({ message: "Game name is required" });
+    }
+
     // Generate unique game code
     let game_code;
     let isUnique = false;
@@ -25,18 +30,18 @@ const createGame = async (req, res) => {
       isUnique = existing.length === 0;
     }
 
-    // Create game
+    // Create game with status
     const [result] = await pool.execute(
-      "INSERT INTO games (game_code, game_name, created_by, max_players) VALUES (?, ?, ?, ?)",
-      [game_code, game_name, created_by, max_players]
+      "INSERT INTO games (game_code, game_name, created_by, max_players, status) VALUES (?, ?, ?, ?, ?)",
+      [game_code, game_name, created_by, max_players, "waiting"]
     );
 
     const game_id = result.insertId;
 
     // Add creator as first player
     await pool.execute(
-      "INSERT INTO game_players (game_id, user_id, player_order) VALUES (?, ?, 1)",
-      [game_id, created_by]
+      "INSERT INTO game_players (game_id, user_id, player_order) VALUES (?, ?, ?)",
+      [game_id, created_by, 1]
     );
 
     // Log game event
@@ -75,6 +80,11 @@ const joinGame = async (req, res) => {
   try {
     const { game_code } = req.body;
     const user_id = req.user.user_id;
+
+    // Validate required fields
+    if (!game_code) {
+      return res.status(400).json({ message: "Game code is required" });
+    }
 
     // Find game
     const [games] = await pool.execute(
@@ -159,11 +169,9 @@ const startGame = async (req, res) => {
     );
 
     if (games.length === 0) {
-      return res
-        .status(403)
-        .json({
-          message: "Not authorized to start this game or game already started",
-        });
+      return res.status(403).json({
+        message: "Not authorized to start this game or game already started",
+      });
     }
 
     // Check minimum players (at least 2)
@@ -282,10 +290,96 @@ const getUserGames = async (req, res) => {
   }
 };
 
+// Delete Game (Creator Only)
+const deleteGame = async (req, res) => {
+  try {
+    const { game_id } = req.params;
+    const user_id = req.user.user_id;
+
+    // Check if user is game creator and game is in waiting status
+    const [games] = await pool.execute(
+      "SELECT * FROM games WHERE game_id = ? AND created_by = ? AND status = ?",
+      [game_id, user_id, "waiting"]
+    );
+
+    if (games.length === 0) {
+      return res.status(403).json({
+        message: "Not authorized to delete this game or game already started",
+      });
+    }
+
+    // Delete related records first (foreign key constraints)
+    await pool.execute("DELETE FROM game_events WHERE game_id = ?", [game_id]);
+    await pool.execute("DELETE FROM game_players WHERE game_id = ?", [game_id]);
+    await pool.execute("DELETE FROM games WHERE game_id = ?", [game_id]);
+
+    res.json({ message: "Game deleted successfully" });
+  } catch (error) {
+    console.error("Delete game error:", error);
+    res.status(500).json({ message: "Server error deleting game" });
+  }
+};
+
+// Leave Game
+const leaveGame = async (req, res) => {
+  try {
+    const { game_id } = req.params;
+    const user_id = req.user.user_id;
+
+    // Check if player is in the game
+    const [playerCheck] = await pool.execute(
+      "SELECT * FROM game_players WHERE game_id = ? AND user_id = ?",
+      [game_id, user_id]
+    );
+
+    if (playerCheck.length === 0) {
+      return res.status(404).json({ message: "You are not in this game" });
+    }
+
+    // Check if user is the creator
+    const [gameCheck] = await pool.execute(
+      "SELECT created_by FROM games WHERE game_id = ?",
+      [game_id]
+    );
+
+    if (gameCheck.length > 0 && gameCheck[0].created_by === user_id) {
+      return res.status(400).json({
+        message: "Game creators cannot leave. Delete the game instead.",
+      });
+    }
+
+    // Remove player from game
+    await pool.execute(
+      "DELETE FROM game_players WHERE game_id = ? AND user_id = ?",
+      [game_id, user_id]
+    );
+
+    // Log the leave event
+    await pool.execute(
+      "INSERT INTO game_events (game_id, event_type, event_data) VALUES (?, ?, ?)",
+      [
+        game_id,
+        "player_left",
+        JSON.stringify({
+          player_id: user_id,
+          username: req.user.username,
+        }),
+      ]
+    );
+
+    res.json({ message: "Left game successfully" });
+  } catch (error) {
+    console.error("Leave game error:", error);
+    res.status(500).json({ message: "Server error leaving game" });
+  }
+};
+
 module.exports = {
   createGame,
   joinGame,
   startGame,
   getGameStatus,
   getUserGames,
+  deleteGame,
+  leaveGame,
 };

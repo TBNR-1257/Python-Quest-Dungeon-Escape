@@ -3,12 +3,24 @@ const { pool } = require("../config/database");
 
 const auth = async (req, res, next) => {
   try {
-    const token = req.header("x-auth-token");
+    // Try to get token from multiple sources
+    let token = req.header("x-auth-token"); // For API requests
 
+    // If no header token, try cookies (for web requests)
+    if (!token && req.cookies && req.cookies.token) {
+      token = req.cookies.token;
+    }
+
+    // If no token found anywhere
     if (!token) {
-      return res
-        .status(401)
-        .json({ message: "No token, authorization denied" });
+      // For web requests, redirect to login page
+      if (req.path.startsWith("/api/")) {
+        return res
+          .status(401)
+          .json({ message: "No token, authorization denied" });
+      } else {
+        return res.redirect("/login");
+      }
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -20,13 +32,30 @@ const auth = async (req, res, next) => {
     );
 
     if (users.length === 0) {
-      return res.status(401).json({ message: "Token is not valid" });
+      // Clear the invalid token from cookies
+      res.clearCookie("token");
+
+      if (req.path.startsWith("/api/")) {
+        return res.status(401).json({ message: "Token is not valid" });
+      } else {
+        return res.redirect("/login");
+      }
     }
 
     req.user = users[0];
     next();
   } catch (error) {
-    res.status(401).json({ message: "Token is not valid" });
+    console.error("Auth middleware error:", error);
+
+    // Clear the invalid token from cookies
+    res.clearCookie("token");
+
+    // Handle web vs API requests differently
+    if (req.path.startsWith("/api/")) {
+      res.status(401).json({ message: "Token is not valid" });
+    } else {
+      res.redirect("/login");
+    }
   }
 };
 

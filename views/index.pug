@@ -1,0 +1,80 @@
+//- views/index.pug - Homepage
+extends layout
+
+block content
+  .hero
+    h1 Python Quest: Dungeon Escape
+    p Master Python Control Flow while navigating through mystical dungeons!
+    p.
+      A hybrid game combining physical board gameplay with digital challenges.
+      Roll dice, scan QR codes, and solve Python programming puzzles to escape the dungeon!
+
+    .hero-actions#heroActions
+      a.btn.btn-primary(href='/register') Start Your Quest
+      a.btn.btn-secondary(href='/login') Continue Adventure
+
+  .card-grid
+    .card
+      h3 🎲 Physical Board Game
+      p Roll dice and move your token across the dungeon board. Each space brings new challenges and adventures!
+      
+    .card  
+      h3 📱 QR Code Integration
+      p Scan QR codes on the board to unlock digital challenges and Python programming questions.
+      
+    .card
+      h3 🐍 Learn Python Control Flow
+      p Master if-statements, loops, and conditional logic through engaging gameplay scenarios.
+      
+    .card
+      h3 👥 Multiplayer Fun
+      p Play with 2-4 friends in real-time. First player to reach the end wins the quest!
+
+  section.features
+    h2 How to Play
+    .card-grid
+      .card
+        h3 1. Setup
+        p Create or join a game room with up to 4 players. Get your physical board ready!
+        
+      .card
+        h3 2. Roll & Move  
+        p Take turns rolling dice and moving your token on the physical dungeon board.
+        
+      .card
+        h3 3. Scan QR Codes
+        p When you land on special spaces, scan QR codes with your device to unlock challenges.
+        
+      .card
+        h3 4. Solve Python Puzzles
+        p Answer Python Control Flow questions correctly to continue your quest. Wrong answers mean penalties!
+        
+      .card
+        h3 5. Race to Victory
+        p Navigate obstacles, solve puzzles, and be the first to escape the dungeon!
+        
+      .card
+        h3 6. Learn & Have Fun
+        p Master Python programming concepts while enjoying an exciting board game experience!
+
+block scripts
+  script.
+    document.addEventListener('DOMContentLoaded', () => {
+      // Check if user is already logged in
+      const token = localStorage.getItem('token');
+      const user = localStorage.getItem('user');
+      const heroActions = document.getElementById('heroActions');
+      
+      if (token && user) {
+        // User is logged in, update hero actions
+        const userData = JSON.parse(user);
+        heroActions.innerHTML = `
+          <a class="btn btn-primary" href="/dashboard">Go to Dashboard</a>
+          <a class="btn btn-secondary" href="/create-game">Create New Game</a>
+        `;
+        
+        // Update welcome message
+        const heroSection = document.querySelector('.hero p');
+        heroSection.textContent = `Welcome back, ${userData.username}! Ready for your next Python adventure?`;
+      }
+    });

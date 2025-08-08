@@ -17,23 +17,113 @@ const io = socketIo(server, {
   },
 });
 
+// Set Pug as template engine
+app.set("view engine", "pug");
+app.set("views", path.join(__dirname, "../views"));
+
 // Middleware
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Allow inline styles for development
+  })
+);
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "../public")));
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100,
 });
 app.use(limiter);
 
-// Basic route for testing
+// Cookie Parser
+const cookieParser = require("cookie-parser");
+app.use(cookieParser());
+
+// Frontend Routes
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "../public/index.html"));
+  res.render("index", {
+    title: "Python Quest: Dungeon Escape",
+    page: "home",
+  });
 });
+
+app.get("/login", (req, res) => {
+  res.render("auth/login", {
+    title: "Login - Python Quest",
+    page: "login",
+  });
+});
+
+app.get("/register", (req, res) => {
+  res.render("auth/register", {
+    title: "Register - Python Quest",
+    page: "register",
+  });
+});
+
+app.get("/dashboard", (req, res) => {
+  res.render("dashboard", {
+    title: "Dashboard - Python Quest",
+    page: "dashboard",
+  });
+});
+
+// app.get("/game/:gameId", (req, res) => {
+//   res.render("game/board", {
+//     title: "Game Board - Python Quest",
+//     page: "game",
+//     gameId: req.params.gameId,
+//   });
+// });
+
+// Create Game page
+app.get("/create-game", (req, res) => {
+  res.render("game/create-game", {
+    title: "Create Game - Python Quest",
+    page: "create-game",
+  });
+});
+
+// Join Game page
+app.get("/join-game", (req, res) => {
+  res.render("game/join-game", {
+    title: "Join Game - Python Quest",
+    page: "join-game",
+  });
+});
+
+// Waiting Room page
+app.get("/waiting-room/:gameId", (req, res) => {
+  res.render("game/waiting-room", {
+    title: "Waiting Room - Python Quest",
+    page: "waiting-room",
+    gameId: req.params.gameId,
+  });
+});
+
+app.get("/game/:gameId", (req, res) => {
+  res.render("game/gameplay", {
+    title: "Game - Python Quest",
+    page: "game",
+    gameId: req.params.gameId,
+  });
+});
+
+app.get("/question/:roomId", (req, res) => {
+  res.render("game/question", {
+    title: "Question - Python Quest",
+    page: "question",
+    roomId: req.params.roomId,
+  });
+});
+
+// API Routes
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/games", require("./routes/games"));
 
 // Test database endpoint
 app.get("/api/test-db", async (req, res) => {
@@ -54,21 +144,11 @@ app.get("/api/test-db", async (req, res) => {
   }
 });
 
-// Routes (will be added later)
-// app.use('/api/auth', require('./routes/auth'));
-// app.use('/api/games', require('./routes/games'));
-// app.use('/api/questions', require('./routes/questions'));
-
-// Socket.io for real-time game updates (will be implemented later)
-// require('./socket/gameSocket')(io);
-
 const PORT = process.env.PORT || 3000;
 
-// Start server and test database connection
 async function startServer() {
   console.log("🚀 Starting Python Quest server...\n");
 
-  // Test database connection first
   const dbConnected = await testConnection();
 
   if (dbConnected) {
@@ -76,16 +156,11 @@ async function startServer() {
       console.log(`\n🎮 Python Quest server running on port ${PORT}`);
       console.log(`🌐 Access your app at: http://localhost:${PORT}`);
       console.log(`🔧 Test database at: http://localhost:${PORT}/api/test-db`);
-      console.log("\n📝 Environment loaded:");
-      console.log(`   - Database: ${process.env.DB_NAME}`);
-      console.log(`   - Host: ${process.env.DB_HOST}:${process.env.DB_PORT}`);
-      console.log(`   - User: ${process.env.DB_USER}`);
     });
   } else {
     console.error(
       "\n❌ Server startup failed due to database connection issues"
     );
-    console.error("Please check your .env file and database configuration");
     process.exit(1);
   }
 }

@@ -1,0 +1,75 @@
+//- views/layout.pug - Main Layout Template
+doctype html
+html(lang='en')
+  head
+    meta(charset='UTF-8')
+    meta(name='viewport', content='width=device-width, initial-scale=1.0')
+    title= title
+    link(rel='stylesheet', href='/css/style.css')
+    block head
+
+  body(class=`page-${page}`)
+    header.header
+      .container
+        .header-content
+          a.logo(href='/') Python Quest
+          nav
+            ul.nav-links#navLinks
+              li: a(href='/login') Login  
+              li: a(href='/register') Register
+
+    main.main-content
+      .container
+        block content
+
+    block scripts
+
+    script.
+      // Logout function
+      function logout() {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/';
+      }
+
+      // Update navigation based on login status
+      function updateNavigation() {
+        const token = localStorage.getItem('token');
+        const user = localStorage.getItem('user');
+        const navLinks = document.getElementById('navLinks');
+        
+        if (token && user) {
+          const userData = JSON.parse(user);
+          navLinks.innerHTML = `
+            <li><a href="/dashboard">Dashboard</a></li>
+            <li><a href="/create-game">Create Game</a></li>
+            <li><a href="/join-game">Join Game</a></li>
+            <li><a href="#" onclick="logout()">Logout (${userData.username})</a></li>
+          `;
+        }
+      }
+
+      // Set auth token for API calls
+      const token = localStorage.getItem('token');
+      if (token) {
+        // Set default authorization header for fetch requests
+        const originalFetch = window.fetch;
+        window.fetch = function(...args) {
+          if (args[1]) {
+            args[1].headers = {
+              ...args[1].headers,
+              'Authorization': `Bearer ${token}`
+            };
+          } else {
+            args[1] = {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            };
+          }
+          return originalFetch.apply(this, args);
+        };
+      }
+
+      // Update navigation on page load
+      document.addEventListener('DOMContentLoaded', updateNavigation);

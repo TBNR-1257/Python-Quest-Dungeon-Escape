@@ -1,0 +1,93 @@
+//- views/game/create-game.pug - Create New Game
+extends ../layout
+
+block content
+  .card.form-container
+    h2 Create New Quest
+    p Set up a new dungeon adventure for you and your friends!
+    
+    form#createGameForm
+      .form-group
+        label(for='gameName') Game Name
+        input.form-control(type='text', id='gameName', name='gameName', placeholder='Enter game name', required, maxlength='50')
+        
+      .form-group
+        label(for='maxPlayers') Maximum Players
+        select.form-control(id='maxPlayers', name='maxPlayers', required)
+          option(value='2') 2 Players
+          option(value='3') 3 Players  
+          option(value='4', selected) 4 Players
+          
+      .form-group
+        label(for='difficulty') Difficulty Level
+        select.form-control(id='difficulty', name='difficulty', required)
+          option(value='easy', selected) Easy (Beginner Python)
+          option(value='medium') Medium (Intermediate)
+          option(value='hard') Hard (Advanced)
+          
+      .form-group
+        label(for='gameDescription') Description (Optional)
+        textarea.form-control(id='gameDescription', name='gameDescription', placeholder='Describe your quest...', rows='3', maxlength='200')
+        
+      button.btn.btn-primary(type='submit') Create Quest
+      a.btn.btn-secondary(href='/dashboard') Cancel
+      
+    .alert#alert(style='display: none;')
+
+block scripts
+  script.
+    document.addEventListener('DOMContentLoaded', () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
+    });
+
+    document.getElementById('createGameForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      // Map frontend field names to backend expected names
+      const formData = {
+        game_name: document.getElementById('gameName').value,
+        max_players: parseInt(document.getElementById('maxPlayers').value),
+        difficulty: document.getElementById('difficulty').value,
+        game_description: document.getElementById('gameDescription').value
+      };
+      
+      const alertDiv = document.getElementById('alert');
+      const token = localStorage.getItem('token');
+      
+      try {
+        const response = await fetch('/api/games/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(formData)
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          alertDiv.className = 'alert alert-success';
+          alertDiv.textContent = 'Quest created successfully!';
+          alertDiv.style.display = 'block';
+          
+          // Redirect to waiting room
+          setTimeout(() => {
+            window.location.href = `/waiting-room/${data.game.game_id}`;
+          }, 1500);
+        } else {
+          alertDiv.className = 'alert alert-error';
+          alertDiv.textContent = data.message || 'Failed to create quest';
+          alertDiv.style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Create game error:', error);
+        alertDiv.className = 'alert alert-error';
+        alertDiv.textContent = 'Network error. Please try again.';
+        alertDiv.style.display = 'block';
+      }
+    });

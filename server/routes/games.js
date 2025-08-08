@@ -6,6 +6,8 @@ const {
   startGame,
   getGameStatus,
   getUserGames,
+  deleteGame,
+  leaveGame,
 } = require("../controllers/gameController");
 const auth = require("../middleware/auth");
 
@@ -43,6 +45,12 @@ router.post(
 
 // Start Game
 router.post("/:game_id/start", auth, startGame);
+
+// Delete Game (Creator only)
+router.delete("/:game_id", auth, deleteGame);
+
+// Leave Game
+router.post("/:game_id/leave", auth, leaveGame);
 
 // Get Game Status
 router.get("/:game_id", auth, getGameStatus);

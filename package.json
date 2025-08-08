@@ -1,31 +1,35 @@
 {
   "name": "python-quest-dungeon-escape",
   "version": "1.0.0",
-  "description": "",
   "main": "start.js",
   "scripts": {
     "start": "node server/server.js",
-    "dev": "nodemon server/server.js",
-    "init-db": "mysql -u root -p < database/schema.sql",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "concurrently \"npm run watch-css\" \"npm run server\"",
+    "watch-css": "echo 'CSS watching not configured yet'",
+    "server": "nodemon server/server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "bcryptjs": "^3.0.2",
+    "concurrently": "^9.2.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "express-rate-limit": "^8.0.1",
+    "express-session": "^1.18.2",
     "express-validator": "^7.2.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.14.3",
+    "pug": "^3.0.3",
     "socket.io": "^4.8.1",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
-  }
+  },
+  "description": ""
 }
