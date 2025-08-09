@@ -1,365 +1,113 @@
-//- views/game/gameplay.pug - Main Game Board
+//- views/game/gameplay.pug
 extends ../layout
 
 block content
-  .game-container
-    .game-header
-      h1#gameTitle Python Quest - Game #{gameId}
-      .game-status#gameStatus Loading game...
-      
-    .game-ui
-      .game-board-section
-        .game-board#gameBoard
-          //- Board cells will be generated dynamically
-          
-        .game-controls
-          .dice-container
-            .dice#dice1 🎲
-            .dice#dice2 🎲
-            button.btn.btn-primary#rollDiceBtn(disabled) Roll Dice
-            
-          .current-player#currentPlayer
-            span Current Turn: Loading...
-            
-      .game-sidebar
-        .card
-          h3 Players
-          .players-list#playersList
-            p Loading players...
-            
-        .card
-          h3 Game Log
-          .game-log#gameLog
-            p Game started!
-            
-        .card
-          h3 Quick Actions
-          button.btn.btn-secondary#scanQRBtn(disabled) Scan QR Code
-          button.btn.btn-danger#leaveGameBtn Leave Game
+  .gameplay-page
+    // Game Header
+    .gameplay-header
+      .gameplay-game-info
+        h1= game.game_name
+        p Game Code: #{game.game_code}
+      .gameplay-status-info
+        p Status: 
+          span.gameplay-status-badge= game.status
+        if game.status === 'completed' && game.winner_name
+          p.gameplay-winner 🏆 Winner: #{game.winner_name}
 
-    //- Question Modal
-    .modal#questionModal
-      .modal-content
-        .modal-header
-          h3 Python Challenge!
-          span.close#closeModal ×
+    .gameplay-main
+      // Left Column: Player Status Panel
+      .gameplay-sidebar
+        .gameplay-card
+          h2.gameplay-section-title 🎮 Players
           
-        .modal-body
-          .question-text#questionText Loading question...
-          .question-options#questionOptions
-            //- Options will be loaded dynamically
+          #player-list.gameplay-player-list
+            each player in players
+              .gameplay-player-card(
+                class=player.user_id === currentUser.user_id ? 'gameplay-current-player' : ''
+                data-user-id=player.user_id
+              )
+                .gameplay-player-header
+                  .gameplay-player-name-section
+                    span.gameplay-player-name= player.username
+                    if player.user_id === currentUser.user_id
+                      span.gameplay-you-badge You
+                  .turn-indicator(style='display: none;')
+                    .gameplay-turn-dot
+
+                .gameplay-player-stats
+                  .gameplay-stat-item
+                    span.gameplay-stat-label Position: 
+                    span.gameplay-stat-value.position-value= player.current_position || 1
+                  .gameplay-stat-item
+                    span.gameplay-stat-label Score: 
+                    span.gameplay-stat-value.score-value= player.score || 0
+
+      // Right Column: Action Controls & Game State
+      .gameplay-content
+        
+        // Action Controls Panel
+        .gameplay-card.gameplay-controls
+          h2.gameplay-section-title 🎯 Game Controls
+          
+          // Current Turn Display
+          #current-turn-display.gameplay-turn-display
+            p#current-turn-text Loading...
+
+          // Action Buttons
+          .gameplay-actions
             
-          .question-timer#questionTimer
-            span Time remaining: 
-            strong#timerDisplay 30s
+            // Roll Dice Section
+            #roll-dice-section
+              button#roll-dice-btn.gameplay-btn.gameplay-btn-primary.gameplay-btn-large(disabled)
+                | 🎲 Roll Dice
+              #dice-result.gameplay-result-success(style='display: none;')
+                p.gameplay-result-text You rolled: 
+                  span#dice-value -
+                p.gameplay-instruction-text#move-instruction -
+
+            // QR Scanner Section  
+            #qr-scanner-section.gameplay-scanner-section(style='display: none;')
+              button#scan-qr-btn.gameplay-btn.gameplay-btn-secondary.gameplay-btn-large
+                | 📱 Scan QR Code
+              #qr-result.gameplay-result-info(style='display: none;')
+                p.gameplay-result-text Room confirmed! 
+                p.gameplay-instruction-text Ready to answer question.
+
+            // Question Section
+            #question-section.gameplay-question-section(style='display: none;')
+              .gameplay-question-card
+                h3.gameplay-question-title Python Question:
+                p#question-text.gameplay-question-text -
+                .gameplay-answer-section
+                  input#answer-input.gameplay-form-input(
+                    type='text'
+                    placeholder='Type your answer here...'
+                  )
+                  button#submit-answer-btn.gameplay-btn.gameplay-btn-warning.gameplay-btn-large
+                    | ✅ Submit Answer
+
+            // Answer Result
+            #answer-result.gameplay-answer-result(style='display: none;')
+              p#result-message.gameplay-result-message -
+              p#result-explanation.gameplay-result-explanation -
+
+        // Game State Display Panel  
+        .gameplay-card.gameplay-log
+          h2.gameplay-section-title 📜 Game Log
+          
+          #game-messages.gameplay-messages
+            .gameplay-placeholder Game messages will appear here...
+
+  // Hidden data for JavaScript
+  script(type='application/json', id='game-data')
+    | !{JSON.stringify({gameId: game.game_id, userId: currentUser.user_id, players: players, gameStatus: game.status})}
 
 block scripts
-  script.
-    const gameId = '#{gameId}';
-    let socket;
-    let currentUser;
-    let gameState = {};
-    let diceRollInProgress = false;
-    let questionTimer;
-    
-    document.addEventListener('DOMContentLoaded', async () => {
-      const token = localStorage.getItem('token');
-      const user = localStorage.getItem('user');
-      
-      if (!token || !user) {
-        window.location.href = '/login';
-        return;
-      }
-      
-      currentUser = JSON.parse(user);
-      
-      // Initialize Socket.IO
-      socket = io({
-        auth: {
-          token: token
-        }
-      });
-      
-      // Join the game room
-      socket.emit('join-game', { gameId, userId: currentUser.id });
-      
-      // Load initial game state
-      await loadGameState();
-      
-      // Setup event listeners
-      setupEventListeners();
-      setupSocketListeners();
-    });
-    
-    async function loadGameState() {
-      try {
-        const response = await fetch(`/api/games/${gameId}/state`);
-        if (response.ok) {
-          gameState = await response.json();
-          updateGameDisplay();
-        } else {
-          console.error('Failed to load game state');
-        }
-      } catch (error) {
-        console.error('Error loading game state:', error);
-      }
-    }
-    
-    function updateGameDisplay() {
-      // Update game title and status
-      document.getElementById('gameTitle').textContent = `${gameState.game_name} - Game #${gameId}`;
-      document.getElementById('gameStatus').innerHTML = `
-        <span class="status-${gameState.status}">${gameState.status}</span>
-        <span class="turn-info">Turn ${gameState.current_turn || 1}</span>
-      `;
-      
-      // Update players list
-      updatePlayersList(gameState.players || []);
-      
-      // Update current player
-      const currentPlayerEl = document.getElementById('currentPlayer');
-      const currentPlayer = gameState.players?.find(p => p.is_current_turn);
-      if (currentPlayer) {
-        currentPlayerEl.innerHTML = `Current Turn: <strong>${currentPlayer.username}</strong>`;
-        
-        // Enable/disable roll dice button
-        const rollBtn = document.getElementById('rollDiceBtn');
-        if (currentPlayer.user_id === currentUser.id && gameState.status === 'active') {
-          rollBtn.disabled = false;
-          rollBtn.textContent = 'Roll Dice';
-        } else {
-          rollBtn.disabled = true;
-          rollBtn.textContent = currentPlayer.user_id === currentUser.id ? 'Wait...' : 'Not Your Turn';
-        }
-      }
-      
-      // Generate game board
-      generateGameBoard();
-    }
-    
-    function generateGameBoard() {
-      const boardEl = document.getElementById('gameBoard');
-      boardEl.innerHTML = '';
-      
-      // Create 8x8 grid (64 cells)
-      for (let i = 0; i < 64; i++) {
-        const cell = document.createElement('div');
-        cell.className = 'board-cell';
-        cell.dataset.position = i;
-        
-        // Mark special cells
-        if (i === 0) {
-          cell.classList.add('start');
-          cell.textContent = 'START';
-        } else if (i === 63) {
-          cell.classList.add('end');
-          cell.textContent = 'FINISH';
-        } else if (i % 7 === 0 && i > 0) {
-          cell.classList.add('qr-code');
-          cell.textContent = '📱';
-        } else if (i % 11 === 0 && i > 0) {
-          cell.classList.add('obstacle');
-          cell.textContent = '🚫';
-        } else {
-          cell.textContent = i;
-        }
-        
-        boardEl.appendChild(cell);
-      }
-      
-      // Add player tokens to board
-      if (gameState.players) {
-        gameState.players.forEach((player, index) => {
-          const position = player.current_position || 0;
-          const cell = boardEl.querySelector(`[data-position="${position}"]`);
-          if (cell) {
-            const token = document.createElement('div');
-            token.className = `player-token player-${index + 1}`;
-            token.textContent = player.username.charAt(0);
-            cell.appendChild(token);
-          }
-        });
-      }
-    }
-    
-    function updatePlayersList(players) {
-      const playersList = document.getElementById('playersList');
-      
-      playersList.innerHTML = players.map((player, index) => `
-        <div class="player-item ${player.is_current_turn ? 'current-turn' : ''}">
-          <div class="player-token player-${index + 1}"></div>
-          <div class="player-info">
-            <span class="player-name">${player.username}</span>
-            <span class="player-position">Position: ${player.current_position || 0}</span>
-          </div>
-        </div>
-      `).join('');
-    }
-    
-    function setupEventListeners() {
-      // Roll dice button
-      document.getElementById('rollDiceBtn').addEventListener('click', rollDice);
-      
-      // Scan QR button
-      document.getElementById('scanQRBtn').addEventListener('click', scanQRCode);
-      
-      // Leave game button
-      document.getElementById('leaveGameBtn').addEventListener('click', () => {
-        if (confirm('Are you sure you want to leave the game?')) {
-          window.location.href = '/dashboard';
-        }
-      });
-      
-      // Question modal close
-      document.getElementById('closeModal').addEventListener('click', closeQuestionModal);
-    }
-    
-    function setupSocketListeners() {
-      socket.on('game-state-updated', (data) => {
-        gameState = data;
-        updateGameDisplay();
-        addGameLog(`Game state updated`);
-      });
-      
-      socket.on('player-moved', (data) => {
-        addGameLog(`${data.username} moved to position ${data.newPosition}`);
-        loadGameState(); // Refresh board
-      });
-      
-      socket.on('dice-rolled', (data) => {
-        animateDice(data.dice1, data.dice2);
-        addGameLog(`${data.username} rolled ${data.dice1} + ${data.dice2} = ${data.total}`);
-      });
-      
-      socket.on('qr-code-scanned', (data) => {
-        if (data.userId === currentUser.id) {
-          showQuestion(data.question);
-        }
-        addGameLog(`${data.username} scanned a QR code!`);
-      });
-      
-      socket.on('question-answered', (data) => {
-        closeQuestionModal();
-        if (data.correct) {
-          addGameLog(`${data.username} answered correctly! +${data.points} points`);
-        } else {
-          addGameLog(`${data.username} answered incorrectly. ${data.penalty}`);
-        }
-        loadGameState();
-      });
-      
-      socket.on('game-finished', (data) => {
-        addGameLog(`🎉 ${data.winner} wins the quest!`);
-        alert(`Game Over! ${data.winner} escaped the dungeon!`);
-        setTimeout(() => {
-          window.location.href = '/dashboard';
-        }, 3000);
-      });
-    }
-    
-    function rollDice() {
-      if (diceRollInProgress) return;
-      
-      diceRollInProgress = true;
-      const rollBtn = document.getElementById('rollDiceBtn');
-      rollBtn.disabled = true;
-      rollBtn.textContent = 'Rolling...';
-      
-      // Animate dice roll
-      const dice1 = document.getElementById('dice1');
-      const dice2 = document.getElementById('dice2');
-      
-      dice1.classList.add('rolling');
-      dice2.classList.add('rolling');
-      
-      socket.emit('roll-dice', { gameId, userId: currentUser.id });
-    }
-    
-    function animateDice(value1, value2) {
-      const dice1 = document.getElementById('dice1');
-      const dice2 = document.getElementById('dice2');
-      
-      setTimeout(() => {
-        dice1.textContent = value1;
-        dice2.textContent = value2;
-        dice1.classList.remove('rolling');
-        dice2.classList.remove('rolling');
-        diceRollInProgress = false;
-      }, 1000);
-    }
-    
-    function scanQRCode() {
-      socket.emit('scan-qr-code', { gameId, userId: currentUser.id });
-    }
-    
-    function showQuestion(questionData) {
-      const modal = document.getElementById('questionModal');
-      const questionText = document.getElementById('questionText');
-      const questionOptions = document.getElementById('questionOptions');
-      
-      questionText.textContent = questionData.question_text;
-      
-      // Create option buttons
-      questionOptions.innerHTML = questionData.options.map((option, index) => `
-        <button class="option-btn" onclick="answerQuestion('${option.id}')">
-          ${String.fromCharCode(65 + index)}. ${option.option_text}
-        </button>
-      `).join('');
-      
-      modal.classList.add('active');
-      
-      // Start timer
-      startQuestionTimer(30);
-    }
-    
-    function startQuestionTimer(seconds) {
-      const timerDisplay = document.getElementById('timerDisplay');
-      let timeLeft = seconds;
-      
-      questionTimer = setInterval(() => {
-        timerDisplay.textContent = `${timeLeft}s`;
-        timeLeft--;
-        
-        if (timeLeft < 0) {
-          clearInterval(questionTimer);
-          answerQuestion(null); // Time's up, no answer
-        }
-      }, 1000);
-    }
-    
-    function answerQuestion(optionId) {
-      if (questionTimer) {
-        clearInterval(questionTimer);
-      }
-      
-      socket.emit('answer-question', { 
-        gameId, 
-        userId: currentUser.id, 
-        optionId: optionId 
-      });
-    }
-    
-    function closeQuestionModal() {
-      const modal = document.getElementById('questionModal');
-      modal.classList.remove('active');
-      
-      if (questionTimer) {
-        clearInterval(questionTimer);
-      }
-    }
-    
-    function addGameLog(message) {
-      const gameLog = document.getElementById('gameLog');
-      const logEntry = document.createElement('div');
-      logEntry.className = 'log-entry';
-      logEntry.innerHTML = `<span class="log-time">${new Date().toLocaleTimeString()}</span> ${message}`;
-      gameLog.appendChild(logEntry);
-      gameLog.scrollTop = gameLog.scrollHeight;
-    }
-    
-    // Cleanup when leaving page
-    window.addEventListener('beforeunload', () => {
-      if (socket) {
-        socket.emit('leave-game', { gameId, userId: currentUser.id });
-      }
-    });
+  // Socket.io client - CRITICAL: Must be loaded first
+  script(src='/socket.io/socket.io.js')
+  
+  // External Libraries
+  script(src='https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js')
+  
+  // Gameplay JavaScript - Load AFTER Socket.io
+  script(src='/js/gameplay.js')

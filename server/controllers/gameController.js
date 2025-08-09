@@ -80,6 +80,7 @@ const joinGame = async (req, res) => {
   try {
     const { game_code } = req.body;
     const user_id = req.user.user_id;
+    const io = req.app.get("io"); // Get Socket.io instance
 
     // Validate required fields
     if (!game_code) {
@@ -141,6 +142,20 @@ const joinGame = async (req, res) => {
       ]
     );
 
+    // SOCKET.IO: Broadcast player joined event to game room
+    if (io) {
+      io.to(`game-${game.game_id}`).emit("player-joined", {
+        userId: user_id,
+        username: req.user.username,
+        playerOrder: player_order,
+        message: `${req.user.username} joined the quest`,
+        timestamp: new Date(),
+      });
+
+      // Trigger player list update
+      io.to(`game-${game.game_id}`).emit("update-player-list");
+    }
+
     res.json({
       message: "Joined game successfully",
       game: {
@@ -161,6 +176,7 @@ const startGame = async (req, res) => {
   try {
     const { game_id } = req.params;
     const user_id = req.user.user_id;
+    const io = req.app.get("io"); // Get Socket.io instance
 
     // Check if user is game creator
     const [games] = await pool.execute(
@@ -192,7 +208,7 @@ const startGame = async (req, res) => {
       [game_id]
     );
 
-    // Start game
+    // FIXED: Use correct field name from your database schema
     await pool.execute(
       "UPDATE games SET status = ?, current_turn_player = ? WHERE game_id = ?",
       ["active", firstPlayer[0].user_id, game_id]
@@ -212,9 +228,20 @@ const startGame = async (req, res) => {
       ]
     );
 
+    // SOCKET.IO: Broadcast game started event to all players in the room
+    if (io) {
+      io.to(`game-${game_id}`).emit("game-started", {
+        gameId: game_id,
+        currentTurnPlayer: firstPlayer[0].user_id,
+        totalPlayers: playerCount[0].count,
+        message: "Quest is starting! Prepare for adventure!",
+        timestamp: new Date(),
+      });
+    }
+
     res.json({
       message: "Game started successfully",
-      current_turn_player: firstPlayer[0].user_id,
+      current_turn_player: firstPlayer[0].user_id, // FIXED: Use consistent field name
     });
   } catch (error) {
     console.error("Start game error:", error);
@@ -295,6 +322,7 @@ const deleteGame = async (req, res) => {
   try {
     const { game_id } = req.params;
     const user_id = req.user.user_id;
+    const io = req.app.get("io"); // Get Socket.io instance
 
     // Check if user is game creator and game is in waiting status
     const [games] = await pool.execute(
@@ -305,6 +333,15 @@ const deleteGame = async (req, res) => {
     if (games.length === 0) {
       return res.status(403).json({
         message: "Not authorized to delete this game or game already started",
+      });
+    }
+
+    // SOCKET.IO: Notify all players before deleting the game
+    if (io) {
+      io.to(`game-${game_id}`).emit("game-deleted", {
+        gameId: game_id,
+        message: "This quest has been deleted by the creator",
+        timestamp: new Date(),
       });
     }
 
@@ -325,6 +362,7 @@ const leaveGame = async (req, res) => {
   try {
     const { game_id } = req.params;
     const user_id = req.user.user_id;
+    const io = req.app.get("io"); // Get Socket.io instance
 
     // Check if player is in the game
     const [playerCheck] = await pool.execute(
@@ -366,6 +404,19 @@ const leaveGame = async (req, res) => {
         }),
       ]
     );
+
+    // SOCKET.IO: Broadcast player left event to remaining players
+    if (io) {
+      io.to(`game-${game_id}`).emit("player-left", {
+        userId: user_id,
+        username: req.user.username,
+        message: `${req.user.username} left the quest`,
+        timestamp: new Date(),
+      });
+
+      // Trigger player list update
+      io.to(`game-${game_id}`).emit("update-player-list");
+    }
 
     res.json({ message: "Left game successfully" });
   } catch (error) {

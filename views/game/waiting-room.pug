@@ -5,6 +5,12 @@ block content
   .waiting-room
     h1 Quest Waiting Room
     
+    // Connection Status Indicator
+    .connection-status.mb-3
+      .d-flex.align-items-center
+        .connection-indicator#connectionIndicator.bg-secondary.mr-2
+        span#connectionStatus Connecting to server...
+    
     .card
       h2#gameTitle Loading game...
       .game-code
@@ -25,14 +31,47 @@ block content
     .game-controls#gameControls
       button.btn.btn-primary#startGameBtn(disabled) Waiting for Players...
       button.btn.btn-danger#leaveDeleteBtn Leave Quest
+    
+    // Real-time Activity Log
+    .card.mt-3
+      h4 Quest Activity
+      #activityLog.activity-log.border.rounded.p-3(style="height: 200px; overflow-y: auto; background-color: #f8f9fa;")
+        .log-entry.text-muted
+          span.timestamp #{new Date().toLocaleTimeString()}
+          span.message.ml-2 Joined waiting room
       
     .alert#alert(style='display: none;')
 
+    // Loading Overlay for Game Start
+    #loadingOverlay.loading-overlay(style='display: none;')
+      .loading-content
+        .spinner-border.text-light(role='status')
+          span.sr-only Loading...
+        h3.text-light.mt-3 Quest Starting!
+        p.text-light Redirecting to game interface...
+
+    // Game Deleted Overlay
+    #deletedOverlay.deleted-overlay(style='display: none;')
+      .deleted-content
+        .text-danger(style='font-size: 4rem;') 🗑️
+        h3.text-dark.mb-3 Quest Deleted
+        p.text-muted.mb-4 This quest has been deleted by the creator.
+        button.btn.btn-primary#returnToDashboardBtn Return to Dashboard
+
 block scripts
+  // Socket.io client
+  script(src="/socket.io/socket.io.js")
+  // Custom socket client
+  script(src="/js/socket-client.js")
+  
   script.
     const gameId = '#{gameId}';
     let socket;
     let currentUser;
+    let gameSocket;
+    let gameDataLoaded = false; // Track if game data has been loaded successfully at least once
+    let consecutiveFailures = 0; // Track consecutive 404s
+    const MAX_FAILURES_BEFORE_DELETION = 3; // Allow 3 consecutive 404s before showing deletion
     
     document.addEventListener('DOMContentLoaded', async () => {
       const token = localStorage.getItem('token');
@@ -42,28 +81,177 @@ block scripts
         window.location.href = '/login';
         return;
       }
-    
-    function showAlert(message, type) {
-      const alertDiv = document.getElementById('alert');
-      alertDiv.className = `alert alert-${type}`;
-      alertDiv.textContent = message;
-      alertDiv.style.display = 'block';
-      
-      setTimeout(() => {
-        alertDiv.style.display = 'none';
-      }, 5000);
-    }
       
       currentUser = JSON.parse(user);
       
-      // Load initial game data
-      await loadGameData();
+      // Initialize Socket.io connection
+      initializeSocket();
       
-      // Set up auto-refresh every 3 seconds to update player list
-      setInterval(loadGameData, 3000);
+      // Load initial game data with retry
+      await loadGameDataWithRetry();
+      
+      // Set up auto-refresh every 5 seconds as fallback
+      setInterval(loadGameData, 5000);
     });
     
-    async function loadGameData() {
+    function initializeSocket() {
+      // Initialize Socket.io
+      socket = io();
+      
+      // Connection events
+      socket.on('connect', () => {
+        updateConnectionStatus(true);
+        console.log('Connected to server');
+        
+        // Join the game room
+        socket.emit('join-game', {
+          gameId: gameId,
+          userId: currentUser.id,
+          username: currentUser.username
+        });
+      });
+      
+      socket.on('disconnect', () => {
+        updateConnectionStatus(false);
+        console.log('Disconnected from server');
+      });
+      
+      // Game room events
+      socket.on('player-joined', (data) => {
+        console.log('Player joined:', data);
+        addActivityLog(data.message, 'success');
+        // Refresh player list
+        setTimeout(loadGameData, 500);
+      });
+      
+      socket.on('player-left', (data) => {
+        console.log('Player left:', data);
+        addActivityLog(data.message, 'info');
+        // Refresh player list
+        setTimeout(loadGameData, 500);
+      });
+      
+      socket.on('player-disconnected', (data) => {
+        console.log('Player disconnected:', data);
+        addActivityLog(data.message + ' (disconnected)', 'warning');
+        // Refresh player list
+        setTimeout(loadGameData, 500);
+      });
+      
+      socket.on('update-player-list', () => {
+        // Refresh game data when requested
+        loadGameData();
+      });
+      
+      socket.on('game-started', (data) => {
+        console.log('Game started:', data);
+        addActivityLog('🚀 Quest is starting! Prepare for adventure!', 'success');
+        
+        // Show loading overlay
+        showGameStartedOverlay();
+        
+        // Redirect to gameplay page after 2 seconds
+        setTimeout(() => {
+          window.location.href = `/games/${gameId}/play`;
+        }, 2000);
+      });
+      
+      socket.on('game-deleted', (data) => {
+        console.log('Game deleted:', data);
+        addActivityLog('🗑️ Quest has been deleted by the creator', 'error');
+        
+        // Show deletion overlay immediately when socket confirms deletion
+        showGameDeletedOverlay();
+      });
+      
+      socket.on('room-info', (data) => {
+        console.log('Room info:', data);
+        addActivityLog(data.message, 'info');
+      });
+    }
+    
+    // Initial load with retry mechanism
+    async function loadGameDataWithRetry() {
+      const maxRetries = 5;
+      let retryCount = 0;
+      
+      while (retryCount < maxRetries) {
+        try {
+          const success = await loadGameData(true);
+          if (success) {
+            gameDataLoaded = true;
+            consecutiveFailures = 0;
+            return;
+          }
+          
+          retryCount++;
+          if (retryCount < maxRetries) {
+            console.log(`Retrying game data load... (${retryCount}/${maxRetries})`);
+            addActivityLog(`Connecting to quest... (attempt ${retryCount + 1})`, 'info');
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
+          }
+        } catch (error) {
+          retryCount++;
+          if (retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      }
+      
+      // If all retries failed, show error
+      showAlert('Failed to load quest data. Please refresh the page.', 'error');
+    }
+    
+    function showGameStartedOverlay() {
+      const loadingOverlay = document.getElementById('loadingOverlay');
+      loadingOverlay.style.display = 'flex';
+    }
+    
+    function showGameDeletedOverlay() {
+      const deletedOverlay = document.getElementById('deletedOverlay');
+      deletedOverlay.style.display = 'flex';
+      
+      // Set up return button
+      document.getElementById('returnToDashboardBtn').onclick = () => {
+        window.location.href = '/dashboard';
+      };
+    }
+    
+    function updateConnectionStatus(connected) {
+      const indicator = document.getElementById('connectionIndicator');
+      const status = document.getElementById('connectionStatus');
+      
+      if (connected) {
+        indicator.className = 'connection-indicator bg-success mr-2';
+        status.textContent = 'Connected to server';
+      } else {
+        indicator.className = 'connection-indicator bg-danger mr-2';
+        status.textContent = 'Disconnected from server';
+      }
+    }
+    
+    function addActivityLog(message, type = 'info') {
+      const logContainer = document.getElementById('activityLog');
+      const logEntry = document.createElement('div');
+      
+      const typeClass = {
+        'success': 'text-success',
+        'info': 'text-info',
+        'warning': 'text-warning',
+        'error': 'text-danger'
+      };
+      
+      logEntry.className = `log-entry ${typeClass[type] || 'text-muted'}`;
+      logEntry.innerHTML = `
+        <span class="timestamp">${new Date().toLocaleTimeString()}</span>
+        <span class="message ml-2">${message}</span>
+      `;
+      
+      logContainer.appendChild(logEntry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    async function loadGameData(isInitialLoad = false) {
       try {
         const token = localStorage.getItem('token');
         const response = await fetch(`/api/games/${gameId}`, {
@@ -75,18 +263,44 @@ block scripts
         if (response.ok) {
           const data = await response.json();
           updateGameDisplay(data);
+          
+          // Reset failure counter on success
+          consecutiveFailures = 0;
+          
+          if (isInitialLoad) {
+            addActivityLog('✅ Connected to quest successfully!', 'success');
+          }
+          
+          return true; // Success
         } else if (response.status === 404) {
-          // Game was deleted, redirect to dashboard
-          showAlert('Game no longer exists. Redirecting...', 'info');
-          setTimeout(() => {
-            window.location.href = '/dashboard';
-          }, 2000);
+          consecutiveFailures++;
+          
+          // Only show deletion overlay if:
+          // 1. Game data was previously loaded successfully (not during initial load)
+          // 2. We've had multiple consecutive failures
+          // 3. NOT received via socket event (which is more reliable)
+          if (gameDataLoaded && consecutiveFailures >= MAX_FAILURES_BEFORE_DELETION) {
+            console.log(`Game not found after ${consecutiveFailures} attempts, showing deletion overlay`);
+            showGameDeletedOverlay();
+          } else if (isInitialLoad) {
+            // During initial load, just log the attempt
+            console.log(`Game not found during initial load (attempt ${consecutiveFailures})`);
+          }
+          
+          return false; // Failed
         } else {
-          showAlert('Error loading game data', 'error');
+          // Other errors
+          if (!isInitialLoad) {
+            showAlert('Error loading game data', 'error');
+          }
+          return false;
         }
       } catch (error) {
         console.error('Error loading game:', error);
-        showAlert('Failed to load game data', 'error');
+        if (!isInitialLoad) {
+          showAlert('Failed to load game data', 'error');
+        }
+        return false;
       }
     }
     
@@ -120,7 +334,7 @@ block scripts
     
     function updatePlayersList(players) {
       const playersList = document.getElementById('playersList');
-      
+        
       if (players.length === 0) {
         playersList.innerHTML = '<p>Waiting for players...</p>';
         return;
@@ -128,10 +342,20 @@ block scripts
       
       playersList.innerHTML = players.map((player, index) => `
         <div class="player-item">
-          <div class="player-token player-${index + 1}"></div>
+          <div class="player-token player-${index + 1}">
+            ${index + 1}
+          </div>
           <div class="player-info">
-            <span class="player-name">${player.username}</span>
-            <span class="player-status">Player ${player.player_order}</span>
+            <div class="player-details">
+              <span class="player-name">${player.username}</span>
+              <span class="player-status">Player ${player.player_order}</span>
+            </div>
+            <div class="player-indicators">
+              ${socket && socket.connected ? 
+                '<span class="online-indicator">●</span>' : 
+                '<span class="offline-indicator">●</span>'
+              }
+            </div>
           </div>
         </div>
       `).join('');
@@ -141,7 +365,7 @@ block scripts
       const startBtn = document.getElementById('startGameBtn');
       const leaveDeleteBtn = document.getElementById('leaveDeleteBtn');
       const minPlayers = players && players.length >= 2;
-      const isCreator = game.created_by === currentUser.id; // Changed from currentUser.user_id to currentUser.id
+      const isCreator = game.created_by === currentUser.id;
       
       // Update start button
       if (isCreator && minPlayers && game.status === 'waiting') {
@@ -173,6 +397,10 @@ block scripts
     
     async function startGame() {
       try {
+        const startBtn = document.getElementById('startGameBtn');
+        startBtn.disabled = true;
+        startBtn.textContent = 'Starting Quest...';
+        
         const token = localStorage.getItem('token');
         const response = await fetch(`/api/games/${gameId}/start`, {
           method: 'POST',
@@ -183,26 +411,33 @@ block scripts
         });
         
         if (response.ok) {
-          showAlert('Quest is starting!', 'success');
-          setTimeout(() => {
-            window.location.href = `/game/${gameId}`;
-          }, 2000);
+          addActivityLog('🎮 Starting the quest...', 'success');
+          // The socket event 'game-started' will handle the redirect
         } else {
           const data = await response.json();
           showAlert(data.message || 'Failed to start game', 'error');
+          startBtn.disabled = false;
+          startBtn.textContent = 'Start Quest!';
         }
       } catch (error) {
         console.error('Start game error:', error);
         showAlert('Network error. Please try again.', 'error');
+        const startBtn = document.getElementById('startGameBtn');
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start Quest!';
       }
     }
     
     async function deleteGame() {
-      if (!confirm('Are you sure you want to delete this quest? This cannot be undone.')) {
+      if (!confirm('Are you sure you want to delete this quest? All players will be removed.')) {
         return;
       }
       
       try {
+        const deleteBtn = document.getElementById('leaveDeleteBtn');
+        deleteBtn.disabled = true;
+        deleteBtn.textContent = 'Deleting...';
+        
         const token = localStorage.getItem('token');
         const response = await fetch(`/api/games/${gameId}`, {
           method: 'DELETE',
@@ -212,17 +447,20 @@ block scripts
         });
         
         if (response.ok) {
-          showAlert('Quest deleted successfully', 'success');
-          setTimeout(() => {
-            window.location.href = '/dashboard';
-          }, 1500);
+          addActivityLog('🗑️ Deleting quest...', 'error');
+          // The socket event 'game-deleted' will handle the overlay
         } else {
           const data = await response.json();
           showAlert(data.message || 'Failed to delete quest', 'error');
+          deleteBtn.disabled = false;
+          deleteBtn.textContent = 'Delete Quest';
         }
       } catch (error) {
         console.error('Delete game error:', error);
         showAlert('Network error. Please try again.', 'error');
+        const deleteBtn = document.getElementById('leaveDeleteBtn');
+        deleteBtn.disabled = false;
+        deleteBtn.textContent = 'Delete Quest';
       }
     }
     
@@ -232,6 +470,10 @@ block scripts
       }
       
       try {
+        const leaveBtn = document.getElementById('leaveDeleteBtn');
+        leaveBtn.disabled = true;
+        leaveBtn.textContent = 'Leaving...';
+        
         const token = localStorage.getItem('token');
         const response = await fetch(`/api/games/${gameId}/leave`, {
           method: 'POST',
@@ -242,17 +484,22 @@ block scripts
         });
         
         if (response.ok) {
-          showAlert('Left quest successfully', 'success');
+          addActivityLog('🚪 Leaving quest...', 'info');
           setTimeout(() => {
             window.location.href = '/dashboard';
           }, 1500);
         } else {
           const data = await response.json();
           showAlert(data.message || 'Failed to leave quest', 'error');
+          leaveBtn.disabled = false;
+          leaveBtn.textContent = 'Leave Quest';
         }
       } catch (error) {
         console.error('Leave game error:', error);
         showAlert('Network error. Please try again.', 'error');
+        const leaveBtn = document.getElementById('leaveDeleteBtn');
+        leaveBtn.disabled = false;
+        leaveBtn.textContent = 'Leave Quest';
       }
     }
     
@@ -266,3 +513,15 @@ block scripts
         alertDiv.style.display = 'none';
       }, 5000);
     }
+    
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      if (socket) {
+        socket.emit('leave-game', {
+          gameId: gameId,
+          userId: currentUser.id,
+          username: currentUser.username
+        });
+        socket.disconnect();
+      }
+    });
