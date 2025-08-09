@@ -5,8 +5,6 @@ block content
   .hero
     h1 Welcome to Your Quest Dashboard
     p#welcomeMessage Ready for your next Python adventure?
-    .user-actions
-      button.btn.btn-danger#logout-btn Logout
 
   .card-grid
     .card
@@ -19,25 +17,19 @@ block content
       p Enter a game code to join an ongoing quest with other players.
       a.btn.btn-secondary(href='/join-game') Join Game
       
-    .card
-      h3 📊 Your Stats
-      p#playerStats Loading your quest statistics...
-      .stats-grid
-        .stat-item
-          .stat-value#gamesPlayed -
-          .stat-label Games Played
-        .stat-item  
-          .stat-value#gamesWon -
-          .stat-label Victories
-        .stat-item
-          .stat-value#questionsAnswered -
-          .stat-label Questions Solved
-
-  section.recent-games
-    h2 Recent Games
-    .card
-      .games-list#recentGamesList
-        p Loading recent games...
+    //- .card
+    //-   h3 📊 Your Stats
+    //-   p#playerStats Loading your quest statistics...
+    //-   .stats-grid
+    //-     .stat-item
+    //-       .stat-value#gamesPlayed -
+    //-       .stat-label Games Played
+    //-     .stat-item  
+    //-       .stat-value#gamesWon -
+    //-       .stat-label Victories
+    //-     .stat-item
+    //-       .stat-value#questionsAnswered -
+    //-       .stat-label Questions Solved
 
 block scripts
   script.
@@ -95,70 +87,27 @@ block scripts
       updateNavigation();
       
       // Load user statistics
-      try {
-        const statsResponse = await fetch('/api/users/stats', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'x-auth-token': token // Include both header formats
-          }
-        });
-        if (statsResponse.ok) {
-          const stats = await statsResponse.json();
-          document.getElementById('gamesPlayed').textContent = stats.gamesPlayed || 0;
-          document.getElementById('gamesWon').textContent = stats.gamesWon || 0; 
-          document.getElementById('questionsAnswered').textContent = stats.questionsAnswered || 0;
-        } else if (statsResponse.status === 401) {
-          // Token expired, clear and redirect
-          localStorage.clear();
-          window.location.href = '/login';
-          return;
-        }
-      } catch (error) {
-        console.error('Error loading stats:', error);
-        document.getElementById('playerStats').textContent = 'Error loading statistics';
-      }
+      //- try {
+      //-   const statsResponse = await fetch('/api/users/stats', {
+      //-     headers: {
+      //-       'Authorization': `Bearer ${token}`,
+      //-       'x-auth-token': token // Include both header formats
+      //-     }
+      //-   });
+      //-   if (statsResponse.ok) {
+      //-     const stats = await statsResponse.json();
+      //-     document.getElementById('gamesPlayed').textContent = stats.gamesPlayed || 0;
+      //-     document.getElementById('gamesWon').textContent = stats.gamesWon || 0; 
+      //-     document.getElementById('questionsAnswered').textContent = stats.questionsAnswered || 0;
+      //-   } else if (statsResponse.status === 401) {
+      //-     // Token expired, clear and redirect
+      //-     localStorage.clear();
+      //-     window.location.href = '/login';
+      //-     return;
+      //-   }
+      //- } catch (error) {
+      //-   console.error('Error loading stats:', error);
+      //-   document.getElementById('playerStats').textContent = 'Error loading statistics';
+      //- }
       
-      // Load recent games
-      try {
-        const gamesResponse = await fetch('/api/users/recent-games', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'x-auth-token': token // Include both header formats
-          }
-        });
-        if (gamesResponse.ok) {
-          const games = await gamesResponse.json();
-          const gamesList = document.getElementById('recentGamesList');
-          
-          if (games.length === 0) {
-            gamesList.innerHTML = '<p>No recent games found. Start your first quest!</p>';
-          } else {
-            gamesList.innerHTML = games.map(game => `
-              <div class="game-item">
-                <div class="game-info">
-                  <h4>Game #${game.game_id}</h4>
-                  <p>Status: ${game.status}</p>
-                  <p>Players: ${game.player_count}</p>
-                  <p>Created: ${new Date(game.created_at).toLocaleDateString()}</p>
-                </div>
-                <div class="game-actions">
-                  ${game.status === 'active' ? 
-                    `<a href="/game/${game.game_id}" class="btn btn-primary">Continue</a>` :
-                    `<span class="game-status ${game.status}">${game.status}</span>`
-                  }
-                </div>
-              </div>
-            `).join('');
-          }
-        } else if (gamesResponse.status === 401) {
-          // Token expired, clear and redirect
-          localStorage.clear();
-          window.location.href = '/login';
-          return;
-        }
-      } catch (error) {
-        console.error('Error loading recent games:', error);
-        document.getElementById('recentGamesList').innerHTML = 
-          '<p>Error loading recent games</p>';
-      }
     });

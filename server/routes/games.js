@@ -59,7 +59,7 @@ router.get("/:game_id", auth, getGameStatus);
 // Get User's Games
 router.get("/", auth, getUserGames);
 
-// NEW: Gameplay Page Route
+// Gameplay Page Route
 router.get("/:game_id/play", auth, async (req, res) => {
   try {
     const { game_id } = req.params;
@@ -134,5 +134,6 @@ router.post("/:game_id/roll-dice", auth, gameplayController.rollDice);
 router.post("/:game_id/scan-qr", auth, gameplayController.scanQR);
 router.post("/:game_id/answer", auth, gameplayController.submitAnswer);
 router.get("/:game_id/state", auth, gameplayController.getGameState);
+router.get("/:game_id/statistics", auth, gameplayController.getGameStats);
 
 module.exports = router;

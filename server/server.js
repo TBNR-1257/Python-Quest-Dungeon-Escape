@@ -33,12 +33,12 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "../public")));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-});
-app.use(limiter);
+// // Rate limiting
+// const limiter = rateLimit({
+//   windowMs: 15 * 60 * 1000,
+//   max: 100,
+// });
+// app.use(limiter);
 
 // Cookie Parser
 const cookieParser = require("cookie-parser");
@@ -213,6 +213,34 @@ io.on("connection", (socket) => {
     );
   });
 
+  // Handle winner announcement requests
+  socket.on("request-winner-stats", (data) => {
+    const { gameId } = data;
+
+    // Broadcast to all players to refresh and show winner modal
+    io.to(`game-${gameId}`).emit("show-winner-modal", {
+      gameId,
+      message: "Loading game results...",
+      timestamp: new Date(),
+    });
+
+    console.log(`Winner stats requested for game ${gameId}`);
+  });
+
+  // Handle return to dashboard
+  socket.on("return-to-dashboard", (data) => {
+    const { gameId, userId } = data;
+
+    // Notify other players that someone left
+    socket.to(`game-${gameId}`).emit("player-returned-dashboard", {
+      userId,
+      message: "A player returned to dashboard",
+      timestamp: new Date(),
+    });
+
+    console.log(`Player ${userId} returned to dashboard from game ${gameId}`);
+  });
+
   // Handle disconnect
   socket.on("disconnect", () => {
     const playerInfo = playerSockets.get(socket.id);
@@ -385,7 +413,6 @@ app.get("/game/:gameId", auth, async (req, res) => {
   }
 });
 
-// new fix here
 app.get("/games/:gameId/play", (req, res) => {
   // Redirect to the existing route
   res.redirect(`/game/${req.params.gameId}`);

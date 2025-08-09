@@ -1,4 +1,4 @@
-// public/js/gameplay.js - Fixed GameplayManager with proper initialization
+// public/js/gameplay.js - Fixed GameplayManager with Winner Logic
 class GameplayManager {
   constructor(gameData) {
     this.gameId = gameData.gameId;
@@ -9,6 +9,7 @@ class GameplayManager {
     this.currentQuestion = null;
     this.qrScanner = null;
     this.isScanning = false;
+    this.gameStats = null;
 
     // Initialize Socket.io
     this.socket = io();
@@ -56,6 +57,11 @@ class GameplayManager {
         message: "🎮 Connected! Follow the quest instructions!",
         timestamp: new Date(),
       });
+
+      // Check if game is already completed and show winner modal
+      if (this.gameStatus === "completed") {
+        setTimeout(() => this.showWinnerModal(), 1000);
+      }
     } catch (error) {
       console.error("Failed to initialize game state:", error);
       this.addGameMessage({
@@ -74,6 +80,11 @@ class GameplayManager {
     this.gameMessages = document.getElementById("game-messages");
     this.qrScannerSection = document.getElementById("qr-scanner-section");
     this.qrResult = document.getElementById("qr-result");
+
+    // Winner modal elements
+    this.winnerModal = document.getElementById("winner-modal");
+    this.returnDashboardBtn = document.getElementById("return-dashboard-btn");
+    this.viewGameLogBtn = document.getElementById("view-game-log-btn");
   }
 
   setupEventListeners() {
@@ -83,6 +94,18 @@ class GameplayManager {
     this.answerInput.addEventListener("keypress", (e) => {
       if (e.key === "Enter") this.submitAnswer();
     });
+
+    // Winner modal event listeners
+    if (this.returnDashboardBtn) {
+      this.returnDashboardBtn.addEventListener("click", () =>
+        this.returnToDashboard()
+      );
+    }
+    if (this.viewGameLogBtn) {
+      this.viewGameLogBtn.addEventListener("click", () =>
+        this.toggleGameLogView()
+      );
+    }
   }
 
   setupSocketListeners() {
@@ -94,6 +117,10 @@ class GameplayManager {
     );
     this.socket.on("turn-changed", (data) => this.handleTurnChanged(data));
     this.socket.on("game-message", (message) => this.addGameMessage(message));
+
+    // Winner announcement event listeners
+    this.socket.on("game-winner", (data) => this.handleGameWinner(data));
+    this.socket.on("show-winner-modal", (data) => this.showWinnerModal());
   }
 
   async rollDice() {
@@ -137,6 +164,7 @@ class GameplayManager {
             message: `🏆 ${result.message} You won!`,
             timestamp: new Date(),
           });
+          // Winner modal will be triggered by Socket.io event
         }
       } else {
         this.addGameMessage({
@@ -644,7 +672,256 @@ class GameplayManager {
     this.gameMessages.scrollTop = this.gameMessages.scrollHeight;
   }
 
+  // Winner announcement functions
+  async showWinnerModal() {
+    try {
+      // Load game statistics
+      await this.loadGameStatistics();
+
+      // Show the modal
+      this.winnerModal.style.display = "block";
+
+      // Add celebration effect
+      this.addCelebrationEffect();
+
+      // Update statistics display
+      this.updateStatisticsDisplay();
+
+      // Disable game controls
+      this.disableGameControls();
+    } catch (error) {
+      console.error("Error showing winner modal:", error);
+      this.addGameMessage({
+        type: "error",
+        message: "Failed to load game results.",
+        timestamp: new Date(),
+      });
+    }
+  }
+
+  async loadGameStatistics() {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`/api/games/${this.gameId}/statistics`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        this.gameStats = await response.json();
+        return this.gameStats;
+      } else {
+        throw new Error("Failed to load statistics");
+      }
+    } catch (error) {
+      console.error("Failed to load game statistics:", error);
+      throw error;
+    }
+  }
+
+  updateStatisticsDisplay() {
+    if (!this.gameStats || !this.gameStats.success) {
+      return;
+    }
+
+    const { game, players, currentPlayer } = this.gameStats;
+
+    // Update winner message
+    const winnerMessage = document.getElementById("winner-message");
+    if (game.winner_name) {
+      if (game.winner_id === this.userId) {
+        winnerMessage.innerHTML = `
+          <div class="gameplay-winner-text">🎉 Congratulations! 🎉</div>
+          <div class="gameplay-winner-subtitle">You completed the Python Quest!</div>
+        `;
+      } else {
+        winnerMessage.innerHTML = `
+          <div class="gameplay-winner-text">🏆 Quest Complete! 🏆</div>
+          <div class="gameplay-winner-subtitle">${game.winner_name} has won the adventure!</div>
+        `;
+      }
+    }
+
+    // Update game overview statistics
+    document.getElementById("game-duration").textContent = `${
+      game.duration_minutes || 0
+    } minutes`;
+    document.getElementById("total-moves").textContent = game.total_moves || 0;
+    document.getElementById("total-questions").textContent =
+      game.total_questions || 0;
+
+    // Update current player statistics
+    if (currentPlayer) {
+      document.getElementById("player-position").textContent =
+        currentPlayer.current_position || 0;
+      document.getElementById("player-score").textContent =
+        currentPlayer.score || 0;
+      document.getElementById("player-questions").textContent =
+        currentPlayer.total_questions_answered || 0;
+      document.getElementById("player-correct").textContent =
+        currentPlayer.correct_answers || 0;
+
+      // Calculate and display accuracy
+      const accuracy =
+        currentPlayer.total_questions_answered > 0
+          ? Math.round(
+              (currentPlayer.correct_answers /
+                currentPlayer.total_questions_answered) *
+                100
+            )
+          : 0;
+      document.getElementById("player-accuracy").textContent = `${accuracy}%`;
+    }
+
+    // Update player rankings
+    this.updatePlayerRankings(players);
+  }
+
+  updatePlayerRankings(players) {
+    const rankingsContainer = document.getElementById("player-rankings");
+
+    // Sort players by score (descending) then by position (descending)
+    const sortedPlayers = [...players].sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      return b.current_position - a.current_position;
+    });
+
+    rankingsContainer.innerHTML = sortedPlayers
+      .map((player, index) => {
+        const isCurrentUser = player.user_id === this.userId;
+        const medal =
+          index === 0
+            ? "🥇"
+            : index === 1
+            ? "🥈"
+            : index === 2
+            ? "🥉"
+            : `${index + 1}.`;
+
+        return `
+        <div class="gameplay-ranking-item ${
+          isCurrentUser ? "gameplay-ranking-current" : ""
+        }">
+          <span class="gameplay-ranking-medal">${medal}</span>
+          <div class="gameplay-ranking-info">
+            <div class="gameplay-ranking-name">
+              ${player.username}${isCurrentUser ? " (You)" : ""}
+            </div>
+            <div class="gameplay-ranking-stats">
+              Position: ${player.current_position} | Score: ${
+          player.score
+        } | Accuracy: ${
+          player.total_questions_answered > 0
+            ? Math.round(
+                (player.correct_answers / player.total_questions_answered) * 100
+              )
+            : 0
+        }%
+            </div>
+          </div>
+        </div>
+      `;
+      })
+      .join("");
+  }
+
+  addCelebrationEffect() {
+    // Create confetti effect
+    const confettiContainer = document.createElement("div");
+    confettiContainer.className = "gameplay-confetti-container";
+    confettiContainer.innerHTML = `
+      <div class="gameplay-confetti">🎉</div>
+      <div class="gameplay-confetti">🎊</div>
+      <div class="gameplay-confetti">⭐</div>
+      <div class="gameplay-confetti">🏆</div>
+      <div class="gameplay-confetti">🎉</div>
+      <div class="gameplay-confetti">🎊</div>
+    `;
+
+    this.winnerModal.appendChild(confettiContainer);
+
+    // Remove confetti after animation
+    setTimeout(() => {
+      if (confettiContainer.parentNode) {
+        confettiContainer.parentNode.removeChild(confettiContainer);
+      }
+    }, 3000);
+  }
+
+  disableGameControls() {
+    // Disable all game control buttons
+    this.rollDiceBtn.disabled = true;
+    this.scanQrBtn.disabled = true;
+    this.submitAnswerBtn.disabled = true;
+
+    // Update turn display
+    const currentTurnText = document.getElementById("current-turn-text");
+    currentTurnText.textContent = "🏁 Game completed!";
+    currentTurnText.className = "gameplay-turn-ended";
+  }
+
+  async returnToDashboard() {
+    try {
+      // Notify other players
+      this.socket.emit("return-to-dashboard", {
+        gameId: this.gameId,
+        userId: this.userId,
+      });
+
+      // Add goodbye message
+      this.addGameMessage({
+        type: "info",
+        message: "🏠 Returning to dashboard...",
+        timestamp: new Date(),
+      });
+
+      // Redirect to dashboard
+      window.location.href = "/dashboard";
+    } catch (error) {
+      console.error("Error returning to dashboard:", error);
+      // Force redirect anyway
+      window.location.href = "/dashboard";
+    }
+  }
+
+  toggleGameLogView() {
+    // Toggle between winner modal and game log view
+    const modalBody = this.winnerModal.querySelector(".gameplay-winner-body");
+    const gameLogPanel = document.querySelector(".gameplay-log");
+
+    if (modalBody.style.display === "none") {
+      // Show winner stats, hide game log
+      modalBody.style.display = "block";
+      gameLogPanel.style.display = "none";
+      this.viewGameLogBtn.textContent = "📜 View Game Log";
+    } else {
+      // Show game log, hide winner stats
+      modalBody.style.display = "none";
+      gameLogPanel.style.display = "block";
+      this.viewGameLogBtn.textContent = "📊 View Statistics";
+    }
+  }
+
   // Socket event handlers
+  handleGameWinner(data) {
+    console.log("Game winner announced:", data);
+
+    this.addGameMessage({
+      type: "success",
+      message: data.message,
+      timestamp: data.timestamp,
+    });
+
+    // Update game status
+    this.gameStatus = "completed";
+
+    // Show winner modal after a short delay
+    setTimeout(() => this.showWinnerModal(), 2000);
+  }
+
   handleDiceRolled(data) {
     if (data.playerId !== this.userId) {
       this.addGameMessage({
@@ -666,31 +943,56 @@ class GameplayManager {
   }
 
   handleAnswerSubmitted(data) {
+    console.log("Answer submitted:", data);
+
     if (data.playerId !== this.userId) {
-      const resultText = data.correct ? "correctly" : "incorrectly";
+      const resultText = data.isCorrect ? "correctly" : "incorrectly";
+      const scoreText = data.isCorrect ? "earned" : "lost";
+
       this.addGameMessage({
-        type: data.correct ? "success" : "error",
-        message: `${data.playerName} answered ${resultText} and ${
-          data.correct ? "earned" : "lost"
-        } ${Math.abs(data.scoreChange)} points`,
+        type: data.isCorrect ? "success" : "error",
+        message: `${
+          data.playerName
+        } answered ${resultText} and ${scoreText} ${Math.abs(
+          data.scoreChange
+        )} points`,
         timestamp: data.timestamp,
       });
+
+      // Update the player's display immediately
+      const playerCard = document.querySelector(
+        `[data-user-id="${data.playerId}"]`
+      );
+      if (playerCard) {
+        playerCard.querySelector(".position-value").textContent =
+          data.newPosition;
+        playerCard.querySelector(".score-value").textContent = data.newScore;
+      }
     }
 
-    // Update game state after answer
-    this.updateGameState();
+    // Force update game state after answer
+    setTimeout(() => this.updateGameState(), 500);
   }
 
   handleTurnChanged(data) {
+    console.log("Turn changed:", data);
+
     this.currentTurnPlayerId = data.currentTurnPlayerId;
     this.updatePlayerTurnIndicators();
     this.updateActionButtons();
     this.hideAllSections();
 
+    // Add message to game log
     if (data.currentTurnPlayerId === this.userId) {
       this.addGameMessage({
         type: "success",
         message: "🎯 It's your turn!",
+        timestamp: data.timestamp,
+      });
+    } else {
+      this.addGameMessage({
+        type: "info",
+        message: `⏳ ${data.currentTurnPlayerName || "Next player"}'s turn`,
         timestamp: data.timestamp,
       });
     }
@@ -737,6 +1039,14 @@ class GameplayManager {
 
         this.updatePlayerTurnIndicators();
         this.updateActionButtons();
+
+        // Check if game just completed
+        if (
+          this.gameStatus === "completed" &&
+          !this.winnerModal.style.display
+        ) {
+          setTimeout(() => this.showWinnerModal(), 1000);
+        }
       }
     } catch (error) {
       console.error("Failed to update game state:", error);

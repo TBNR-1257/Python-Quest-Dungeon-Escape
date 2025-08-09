@@ -98,6 +98,69 @@ block content
           #game-messages.gameplay-messages
             .gameplay-placeholder Game messages will appear here...
 
+  // Winner Modal
+  #winner-modal.gameplay-winner-modal(style='display: none;')
+    .gameplay-winner-overlay
+      .gameplay-winner-content
+        .gameplay-winner-header
+          h2.gameplay-winner-title 🏆 Quest Complete!
+          
+        .gameplay-winner-body
+          // Winner Announcement
+          .gameplay-winner-announcement
+            #winner-message.gameplay-winner-message Loading results...
+            #winner-crown.gameplay-winner-crown 👑
+            
+          // Game Statistics
+          .gameplay-winner-stats
+            h3.gameplay-stats-title 📊 Final Statistics
+            
+            .gameplay-stats-grid
+              .gameplay-stats-section
+                h4.gameplay-stats-section-title Game Overview
+                .gameplay-stats-list
+                  .gameplay-stats-item
+                    span.gameplay-stats-label Duration:
+                    span#game-duration.gameplay-stats-value -
+                  .gameplay-stats-item
+                    span.gameplay-stats-label Total Moves:
+                    span#total-moves.gameplay-stats-value -
+                  .gameplay-stats-item
+                    span.gameplay-stats-label Questions Asked:
+                    span#total-questions.gameplay-stats-value -
+                    
+              .gameplay-stats-section
+                h4.gameplay-stats-section-title Your Performance
+                .gameplay-stats-list
+                  .gameplay-stats-item
+                    span.gameplay-stats-label Final Position:
+                    span#player-position.gameplay-stats-value -
+                  .gameplay-stats-item
+                    span.gameplay-stats-label Final Score:
+                    span#player-score.gameplay-stats-value -
+                  .gameplay-stats-item
+                    span.gameplay-stats-label Questions Answered:
+                    span#player-questions.gameplay-stats-value -
+                  .gameplay-stats-item
+                    span.gameplay-stats-label Correct Answers:
+                    span#player-correct.gameplay-stats-value -
+                  .gameplay-stats-item
+                    span.gameplay-stats-label Accuracy:
+                    span#player-accuracy.gameplay-stats-value -
+                    
+            // Player Rankings
+            .gameplay-rankings
+              h4.gameplay-rankings-title 🏅 Final Rankings
+              #player-rankings.gameplay-rankings-list
+                .gameplay-placeholder Loading rankings...
+
+        .gameplay-winner-footer
+          .gameplay-winner-actions
+            button#return-dashboard-btn.gameplay-btn.gameplay-btn-primary.gameplay-btn-large
+              | 🏠 Return to Dashboard
+            button#view-game-log-btn.gameplay-btn.gameplay-btn-secondary
+              | 📜 View Game Log
+
   // Hidden data for JavaScript
   script(type='application/json', id='game-data')
     | !{JSON.stringify({gameId: game.game_id, userId: currentUser.user_id, players: players, gameStatus: game.status})}
