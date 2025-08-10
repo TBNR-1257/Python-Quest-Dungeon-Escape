@@ -199,66 +199,66 @@ class GameplayManager {
       this.scanQrBtn.disabled = true;
       this.scanQrBtn.textContent = "📱 Starting Camera...";
 
-      // Create QR scanner container if it doesn't exist
-      let scannerContainer = document.getElementById("qr-scanner-container");
-      if (!scannerContainer) {
-        scannerContainer = document.createElement("div");
-        scannerContainer.id = "qr-scanner-container";
-        scannerContainer.className = "gameplay-scanner-container";
-        scannerContainer.innerHTML = `
-          <div class="gameplay-scanner-header">
-            <p>Position QR code within the frame</p>
-          </div>
-          <div id="qr-reader" style="width: 100%; max-width: 400px; margin: 0 auto;"></div>
-          <div class="gameplay-scanner-controls">
-            <button id="stop-scanner-btn" class="gameplay-btn gameplay-btn-secondary">
-              ❌ Stop Scanner
-            </button>
-          </div>
-        `;
-        this.qrScannerSection.appendChild(scannerContainer);
+      // IMPORTANT: Always create fresh scanner container to avoid conflicts
+      this.cleanupQRScanner();
 
-        // Add CSS for scanner
-        if (!document.getElementById("qr-scanner-styles")) {
-          const style = document.createElement("style");
-          style.id = "qr-scanner-styles";
-          style.textContent = `
-            .gameplay-scanner-container {
-              margin-top: 15px;
-              padding: 20px;
-              background: #f8f9fa;
-              border: 2px solid #dee2e6;
-              border-radius: 8px;
-            }
-            .gameplay-scanner-header {
-              text-align: center;
-              margin-bottom: 15px;
-            }
-            .gameplay-scanner-header p {
-              margin: 0;
-              color: #666;
-              font-size: 0.9em;
-            }
-            .gameplay-scanner-controls {
-              text-align: center;
-              margin-top: 15px;
-            }
-          `;
-          document.head.appendChild(style);
+      // Create new QR scanner container
+      const scannerContainer = document.createElement("div");
+      scannerContainer.id = "qr-scanner-container";
+      scannerContainer.className = "gameplay-scanner-container";
+      scannerContainer.innerHTML = `
+      <div class="gameplay-scanner-header">
+        <p>Position QR code within the frame</p>
+      </div>
+      <div id="qr-reader" style="width: 100%; max-width: 400px; margin: 0 auto;"></div>
+      <div class="gameplay-scanner-controls">
+        <button id="stop-scanner-btn" class="gameplay-btn gameplay-btn-secondary">
+          ❌ Stop Scanner
+        </button>
+      </div>
+    `;
+      this.qrScannerSection.appendChild(scannerContainer);
+
+      // Add CSS for scanner (only if not already added)
+      if (!document.getElementById("qr-scanner-styles")) {
+        const style = document.createElement("style");
+        style.id = "qr-scanner-styles";
+        style.textContent = `
+        .gameplay-scanner-container {
+          margin-top: 15px;
+          padding: 20px;
+          background: #f8f9fa;
+          border: 2px solid #dee2e6;
+          border-radius: 8px;
         }
-
-        // Add stop button event listener
-        document
-          .getElementById("stop-scanner-btn")
-          .addEventListener("click", () => {
-            this.stopQRScanner();
-          });
+        .gameplay-scanner-header {
+          text-align: center;
+          margin-bottom: 15px;
+        }
+        .gameplay-scanner-header p {
+          margin: 0;
+          color: #666;
+          font-size: 0.9em;
+        }
+        .gameplay-scanner-controls {
+          text-align: center;
+          margin-top: 15px;
+        }
+      `;
+        document.head.appendChild(style);
       }
 
-      // Initialize html5-qrcode scanner
+      // Add stop button event listener
+      document
+        .getElementById("stop-scanner-btn")
+        .addEventListener("click", () => {
+          this.stopQRScanner();
+        });
+
+      // Create completely new Html5Qrcode instance
       this.qrScanner = new Html5Qrcode("qr-reader");
 
-      // Start scanning
+      // Start scanning with fresh instance
       await this.qrScanner.start(
         { facingMode: "environment" }, // Use back camera by default
         {
@@ -285,11 +285,18 @@ class GameplayManager {
 
       // Show scanner container
       scannerContainer.style.display = "block";
+
+      console.log("QR Scanner started successfully");
     } catch (error) {
       console.error("Failed to start QR scanner:", error);
+
+      // Clean up on failure
+      this.cleanupQRScanner();
+
       this.addGameMessage({
         type: "error",
-        message: "Failed to access camera. Please check permissions.",
+        message:
+          "Failed to access camera. Please check permissions or try manual input.",
         timestamp: new Date(),
       });
 
@@ -303,23 +310,56 @@ class GameplayManager {
 
   async stopQRScanner() {
     try {
+      console.log("Stopping QR scanner...");
+
       if (this.qrScanner && this.isScanning) {
         await this.qrScanner.stop();
         this.qrScanner.clear();
-        this.qrScanner = null;
       }
 
-      // Hide scanner container
-      const scannerContainer = document.getElementById("qr-scanner-container");
-      if (scannerContainer) {
-        scannerContainer.style.display = "none";
-      }
+      // Clean up everything
+      this.cleanupQRScanner();
 
       this.isScanning = false;
       this.scanQrBtn.textContent = "📱 Scan QR Code";
       this.scanQrBtn.disabled = false;
+
+      console.log("QR scanner stopped successfully");
     } catch (error) {
       console.error("Error stopping QR scanner:", error);
+      // Force cleanup even if stop fails
+      this.cleanupQRScanner();
+      this.isScanning = false;
+      this.scanQrBtn.textContent = "📱 Scan QR Code";
+      this.scanQrBtn.disabled = false;
+    }
+  }
+
+  // NEW: Complete cleanup function
+  cleanupQRScanner() {
+    try {
+      // Remove scanner container completely
+      const scannerContainer = document.getElementById("qr-scanner-container");
+      if (scannerContainer && scannerContainer.parentNode) {
+        scannerContainer.parentNode.removeChild(scannerContainer);
+      }
+
+      // Clear scanner instance
+      if (this.qrScanner) {
+        try {
+          this.qrScanner.clear();
+        } catch (clearError) {
+          console.warn("Error clearing scanner:", clearError);
+        }
+        this.qrScanner = null;
+      }
+
+      // Reset state
+      this.isScanning = false;
+
+      console.log("QR scanner cleanup completed");
+    } catch (error) {
+      console.error("Error during QR scanner cleanup:", error);
     }
   }
 
@@ -475,7 +515,7 @@ class GameplayManager {
     }
   }
 
-  // Add this new function to show temporary error messages
+  // function to show temporary error messages
   showTemporaryError(message) {
     // Create or update error display
     let errorDisplay = document.getElementById("qr-error-display");
@@ -653,7 +693,7 @@ class GameplayManager {
     this.qrResult.style.display = "none";
     document.getElementById("question-section").style.display = "none";
 
-    // Stop scanner if running
+    // Stop and clean up scanner completely
     if (this.isScanning) {
       this.stopQRScanner();
     }
@@ -662,6 +702,12 @@ class GameplayManager {
     const manualInput = document.getElementById("manual-qr-input");
     if (manualInput) {
       manualInput.style.display = "none";
+    }
+
+    // Hide error display
+    const errorDisplay = document.getElementById("qr-error-display");
+    if (errorDisplay) {
+      errorDisplay.style.display = "none";
     }
   }
 
