@@ -395,10 +395,8 @@ class GameplayManager {
   }
 
   async onQRCodeScanned(qrData, decodedResult) {
-    // Stop scanner immediately when QR code is found
-    if (this.isScanning) {
-      await this.stopQRScanner();
-    }
+    // Don't stop scanner immediately - wait to see if scan is valid
+    const wasScanning = this.isScanning;
 
     // Hide manual input if shown
     const manualInput = document.getElementById("manual-qr-input");
@@ -423,6 +421,11 @@ class GameplayManager {
       const result = await response.json();
 
       if (result.success) {
+        // SUCCESS: Stop scanner and proceed with question
+        if (wasScanning) {
+          await this.stopQRScanner();
+        }
+
         this.showQuestion(result.question);
         this.qrResult.style.display = "block";
 
@@ -440,23 +443,84 @@ class GameplayManager {
           timestamp: new Date(),
         });
       } else {
+        // ERROR: Keep scanner running, show error message
         this.addGameMessage({
           type: "error",
           message: result.message,
           timestamp: new Date(),
         });
+
+        // Reset button state but keep scanner active
+        this.scanQrBtn.disabled = false;
+        this.scanQrBtn.textContent = "📱 Stop Scanner";
+
+        // Show error message temporarily
+        this.showTemporaryError(result.message);
       }
     } catch (error) {
       console.error("QR processing error:", error);
+
+      // On network/processing error, keep scanner running
       this.addGameMessage({
         type: "error",
         message: "Failed to process QR code. Please try again.",
         timestamp: new Date(),
       });
-    } finally {
+
+      // Reset button state but keep scanner active
       this.scanQrBtn.disabled = false;
-      this.scanQrBtn.textContent = "📱 Scan QR Code";
+      this.scanQrBtn.textContent = "📱 Stop Scanner";
+
+      this.showTemporaryError("Failed to process QR code. Please try again.");
     }
+  }
+
+  // Add this new function to show temporary error messages
+  showTemporaryError(message) {
+    // Create or update error display
+    let errorDisplay = document.getElementById("qr-error-display");
+    if (!errorDisplay) {
+      errorDisplay = document.createElement("div");
+      errorDisplay.id = "qr-error-display";
+      errorDisplay.className = "gameplay-qr-error";
+      this.qrScannerSection.appendChild(errorDisplay);
+
+      // Add CSS for error display if not exists
+      if (!document.getElementById("qr-error-styles")) {
+        const style = document.createElement("style");
+        style.id = "qr-error-styles";
+        style.textContent = `
+        .gameplay-qr-error {
+          margin-top: 15px;
+          padding: 12px;
+          background: #ffebee;
+          border: 2px solid #f44336;
+          border-radius: 8px;
+          color: #c62828;
+          font-weight: bold;
+          text-align: center;
+          animation: gameplay-error-pulse 0.5s ease-in-out;
+        }
+        
+        @keyframes gameplay-error-pulse {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+          100% { transform: scale(1); }
+        }
+      `;
+        document.head.appendChild(style);
+      }
+    }
+
+    errorDisplay.textContent = message;
+    errorDisplay.style.display = "block";
+
+    // Hide error after 3 seconds
+    setTimeout(() => {
+      if (errorDisplay) {
+        errorDisplay.style.display = "none";
+      }
+    }, 3000);
   }
 
   async submitAnswer() {
